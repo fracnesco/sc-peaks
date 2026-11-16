@@ -1,0 +1,11 @@
+(
+	name: "Peaks",
+	summary: "peak control on FxKit: Shear, an antialiased, gain-matched clipper with ten curves, and Wall, a true-peak lookahead limiter - as UGens and as objects, with windows",
+	version: "0.1.0",
+	author: "Francesco Corvi",
+	url: "https://github.com/fracnesco/sc-peaks.git",
+	license: "MIT",
+	copyright: "Copyright (c) 2026 Francesco Corvi",
+	schelp: "HelpSource",
+	dependencies: ["https://github.com/fracnesco/sc-fx-kit.git"]
+)
