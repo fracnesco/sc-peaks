@@ -1,0 +1,291 @@
+TITLE:: PeakKit
+summary:: what Shear and Wall share: ten clipping curves and their antiderivatives, transparent antialiasing, an exact delay, true peak, a window max, short-term loudness
+categories:: Libraries>Peaks
+related:: Classes/Shear, Classes/Wall
+
+DESCRIPTION::
+Class methods only. Every curve is written once, as arithmetic that runs on Numbers and on UGens alike, so a window draws the same numbers the server plays. The curves take code::u:: in units of the clip level (1 is the level) and never answer more than 1 in size.
+
+code::
+PeakKit.curveNames;
+PeakKit.f(\smooth, 1.2, 0.3);              // the curve at u = 1.2, bend 0.3
+PeakKit.fInt(\smooth, 1.2, 0.3);           // its antiderivative
+(-3, -2.99 .. 3).collect { |u| PeakKit.f(\fold, u, 0.45) }.plot("fold");
+::
+
+The antialiasing is first-order ADAA in Vicanek's transparent form: a one-pole before the curve (link::#*pre::), the divided difference of the antiderivative over half steps centred on the last sample (link::#*adaa::, link::#*bank::), a one-pole after (link::#*post::). Where the curve is a line, the three together are a first-order allpass: flat, about one sample late, and link::#*linearTwin:: is that allpass alone, so a dry signal lines up with the wet to float precision (measured: 5.5e-6).
+
+code::
+// a sine under the clip level comes out as its allpassed twin
+{ var x = SinOsc.ar(440) * 0.5; PeakKit.linearTwin(x) - x }.plot(0.01);
+::
+
+Six of the ten curves (smooth, crisp, inflate, sine, gap, rectify) are one piecewise polynomial whose numbers a mode picks (link::#*polyCoefs::); tube, diode, fold and wrap have their own. Curves are branch-free (segments clipped into place, never a comparison), because on a Number a comparison answers a Boolean.
+
+subsection:: Two lessons the helpers carry
+link::#*afterKr:: adds a control-rate zero, built from every control-rate value, to the audio input. sclang sorts a SynthDef's UGens depth first from whatever is ready, and the input is ready first: without the zero, the audio chains of every channel start before their control inputs exist and run side by side. A stereo Shear needed 111 audio wire buffers that way and did not load on a stock server (64); with it, 46.
+
+link::#*delay:: is exactly k samples late. code::DelayN:: truncates code::delaytime * SampleRate::, and k / SR lands on k - 1 for some k (7, 14, 23, 28 at 44.1 kHz, measured), so it asks for half a sample more.
+
+CLASSMETHODS::
+
+subsection:: Names
+
+METHOD:: curveNames
+code::[\smooth, \crisp, \inflate, \tube, \sine, \diode, \fold, \wrap, \gap, \rectify]::, Shear's menu order.
+
+METHOD:: modeIndex
+A curve's place in link::#*curveNames::.
+ARGUMENT:: mode
+
+METHOD:: families
+The five evaluators: code::[\poly, \tube, \diode, \fold, \wrap]::.
+
+METHOD:: familyOf
+Per curve, the index of its evaluator in link::#*families::.
+
+METHOD:: isPoly
+Per curve, 1 if the poly evaluator plays it.
+
+METHOD:: polyMembers
+The curves the poly evaluator plays.
+
+METHOD:: polyIndexOf
+Per curve, its place among link::#*polyMembers:: (0 for the others).
+
+subsection:: The curves
+
+METHOD:: f
+A curve by name, at code::u::.
+ARGUMENT:: mode
+ARGUMENT:: u
+A Number or a UGen, in clip units.
+ARGUMENT:: beta
+code::bend::, 0 to 1 (a Number or a control-rate UGen).
+RETURNS:: The output, never past 1 in size.
+
+METHOD:: fInt
+The antiderivative of link::#*f::, which is what the antialiasing integrates.
+ARGUMENT:: mode
+ARGUMENT:: u
+ARGUMENT:: beta
+
+METHOD:: fB
+link::#*f:: with an offset code::b:: along the curve, code::(f(u + b) - f(b)) / (1 + |f(b)|)::, still 0 at 0 and never past 1 (Shear's bias and skew).
+ARGUMENT:: mode
+ARGUMENT:: u
+ARGUMENT:: beta
+ARGUMENT:: b
+
+METHOD:: fIntB
+The antiderivative of link::#*fB::.
+ARGUMENT:: mode
+ARGUMENT:: u
+ARGUMENT:: beta
+ARGUMENT:: b
+
+METHOD:: polyCoefs
+A poly curve's numbers: a first piece of degree 5 up to code::a1::, a middle piece from code::a1:: to code::a2::, then 1; the negative side scaled.
+ARGUMENT:: mode
+ARGUMENT:: beta
+RETURNS:: code::[a1, a2, p1, p2, p3, p4, p5, c1, c2, h, sNeg]::
+
+METHOD:: polyPrep
+What the poly evaluator reads, worked out once from link::#*polyCoefs:: (control rate in a graph).
+ARGUMENT:: c
+RETURNS:: An link::Classes/Event::.
+
+METHOD:: polyf
+The poly evaluator's curve.
+ARGUMENT:: u
+ARGUMENT:: k
+From link::#*polyPrep::.
+
+METHOD:: polyF
+Its antiderivative.
+ARGUMENT:: u
+ARGUMENT:: k
+
+METHOD:: tubef
+code::tanh(u)::.
+ARGUMENT:: u
+
+METHOD:: tubeF
+code::|u| + log(1 + exp(-2|u|)) - log 2::, which never overflows.
+ARGUMENT:: u
+
+METHOD:: diodeL
+The diode's lower rail, code::1 - 0.7 * beta::.
+ARGUMENT:: beta
+
+METHOD:: diodef
+Soft at 1 above, earlier and harder at code::-ll:: below; unit slope at 0.
+ARGUMENT:: u
+ARGUMENT:: ll
+
+METHOD:: diodeF
+ARGUMENT:: u
+ARGUMENT:: ll
+
+METHOD:: wrapf
+code::(1 - beta) * wrap2(u, 1) + beta * fold2(u, 1)::.
+ARGUMENT:: u
+ARGUMENT:: beta
+
+METHOD:: wrapF
+ARGUMENT:: u
+ARGUMENT:: beta
+
+METHOD:: foldT
+The Buchla 259 cells' thresholds in volts (Esqueda, Pöntynen, Välimäki, Parker, DAFx-17, eqs. 13-18).
+
+METHOD:: foldW
+The cells' net weights.
+
+METHOD:: foldA
+Volts per clip level for a bend, code::1 + 9 * beta::.
+ARGUMENT:: beta
+
+METHOD:: foldf
+The folder, clamped to its valid range (10 V) and divided by link::#*buchlaNorm::.
+ARGUMENT:: u
+ARGUMENT:: aa
+From link::#*foldA::.
+
+METHOD:: foldF
+ARGUMENT:: u
+ARGUMENT:: aa
+
+METHOD:: foldDD
+Fold's divided difference code::(F(p) - F(q)) / (p - q)::, factored so that no two large numbers are subtracted: the plain form subtracts terms of about 900 (at 10 V) in float32.
+ARGUMENT:: p
+ARGUMENT:: q
+ARGUMENT:: aa
+ARGUMENT:: ill
+1 when p and q are too close: the answer is then finite but meaningless.
+
+METHOD:: buchlaNorm
+The folder's largest output over its valid range, 4.197, computed at class init.
+
+METHOD:: sineP3
+The cubic coefficient of the quintic that stands in for the sine (the only odd quintic reaching 1 with zero slope at pi/2).
+
+METHOD:: sineP5
+Its quintic coefficient.
+
+subsection:: The antialiasing
+
+METHOD:: apCoef
+The one-poles' coefficient, code::3 - sqrt(8)::.
+
+METHOD:: pre
+The one-pole before the curve.
+ARGUMENT:: x
+An audio rate UGen.
+
+METHOD:: post
+The one-pole after it.
+ARGUMENT:: x
+
+METHOD:: linearTwin
+The whole chain with the curve a line: a first-order allpass, 0.71 samples late at low frequencies and 1.41 at Nyquist, where it is -1. The dry signal for mix, delta and bypass.
+ARGUMENT:: x
+
+METHOD:: twinOfPre
+The same from a signal already through link::#*pre::.
+ARGUMENT:: p
+
+METHOD:: adaa
+Transparent first-order ADAA of one curve, between link::#*pre:: and link::#*post::. Where two points are closer than code::eps:: it takes the curve at their midpoint.
+ARGUMENT:: x
+Through code::pre::.
+ARGUMENT:: fF
+code::{ |u| ... }::, the antiderivative.
+ARGUMENT:: ff
+code::{ |u| ... }::, the curve.
+ARGUMENT:: eps
+ARGUMENT:: mv
+0 to 1: fades over to the midpoint fallback (while the curve's parameters move).
+RETURNS:: What goes into code::post::.
+
+METHOD:: bank
+The five evaluators at once, weighted, with the offset and its correction: Shear's curve. Each quantity is built family after family and used at once, so few audio wires are alive at a time.
+ARGUMENT:: x
+Through code::pre::.
+ARGUMENT:: k
+An Event of control-rate values (code::w pp ll aa wb b fb nInv mv eps::), as code::Shear.prKr:: makes it.
+
+subsection:: Plumbing
+
+METHOD:: delay
+Exactly code::k:: samples late; k = 0 is x itself.
+ARGUMENT:: x
+ARGUMENT:: k
+A Number or a UGen.
+ARGUMENT:: maxSec
+
+METHOD:: afterKr
+code::sig:: with a control-rate zero added that depends on everything control rate in code::p:: and code::k::, so the audio is built after it (fewer wire buffers).
+ARGUMENT:: sig
+An Array of audio rate UGens.
+ARGUMENT:: p
+ARGUMENT:: k
+Anything holding control-rate UGens: Dictionaries and Arrays are searched.
+
+subsection:: True peak (ITU-R BS.1770)
+
+METHOD:: tpPhase0
+The 4x oversampling FIR's first phase, 12 taps (BS.1770-5, Annex 2).
+
+METHOD:: tpPhase1
+Its second phase.
+
+METHOD:: tpPhases
+The four phases. Their DC group delays are 5.83, 5.69, 5.31 and 5.17 samples: nothing reads the middle of the interval, and with them alone a sine at SR/6 or SR/3 read 0.295 dB low (measured).
+
+METHOD:: tpExtra
+Three more points, windowed sincs (Kaiser, beta 6, 12 taps) at 5.25, 5.5 and 5.75 samples. With them the worst under-reading from 1 to 19.5 kHz at 48 kHz is 0.073 dB.
+
+METHOD:: tpAllPoints
+The seven point filters, code::tpPhases ++ tpExtra::.
+
+METHOD:: tpTaps
+code::x:: and eleven code::Delay1::s after it.
+ARGUMENT:: x
+
+METHOD:: samplePeakOf
+The sample peak with the true peak's latency: the larger of taps 5 and 6.
+ARGUMENT:: taps
+
+METHOD:: tpPoints
+The seven interpolated points between taps 6 and 5, as absolute values (Number taps work too).
+ARGUMENT:: taps
+
+METHOD:: truePeak
+The true peak of x, about 5.5 samples late.
+code::
+{ PeakKit.truePeak(SinOsc.ar(SampleRate.ir / 4, 0.25pi)) }.plot(0.002);   // about 1, though the samples are 0.71
+::
+ARGUMENT:: x
+ARGUMENT:: taps
+Shared taps, or nil.
+
+subsection:: Window max and loudness
+
+METHOD:: windowMax
+The largest of code::d:: over the last code::w:: samples, exactly, with no windowed-max UGen: a sparse table of maxima over 1, 2, 4 ... samples, then two overlapping windows that cover the range.
+ARGUMENT:: d
+ARGUMENT:: ws
+Window lengths in samples (Numbers or UGens).
+ARGUMENT:: maxK
+Table levels: 11 covers 6 ms at 192 kHz.
+RETURNS:: One signal per window length.
+
+METHOD:: kWeight
+BS.1770's K-weighting as two biquads, a +4 dB shelf at 1682 Hz and a 38 Hz high pass, within about 0.1 dB of the standard's filters in the audio band at any sample rate.
+ARGUMENT:: x
+
+METHOD:: shortTermLoudness
+Short-term loudness in LUFS, control rate: K-weighted, squared, summed over the channels, a running mean over code::seconds::, no gating. Reads about 0.1 LU under a BS.1770 reference (measured on pink noise, drums and a stereo pair).
+ARGUMENT:: sig
+ARGUMENT:: seconds

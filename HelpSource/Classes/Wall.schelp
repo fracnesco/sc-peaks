@@ -1,0 +1,173 @@
+TITLE:: Wall
+summary:: a lookahead brickwall limiter with a true-peak detector and a two-stage release - as a UGen and as an object, with a window
+categories:: Libraries>Peaks
+related:: Classes/Shear, Classes/PeakKit, Classes/WallView, Classes/FxParamUnit, Classes/FxDevicePanel, Classes/Limiter
+
+DESCRIPTION::
+A limiter turns the sound down just enough that nothing passes a level: the ceiling, code::limit::. Wall looks a little ahead (code::ahead::), so it starts turning down before a peak arrives instead of clipping it, and by default it watches the peaks between the samples too (code::truePeak::), the ones a converter or an mp3 makes. code::input:: pushes the sound into the ceiling: louder, until it is squashed.
+
+code::
+Ndef(\mix, { Wall.ar(SinOsc.ar([110, 111]) * LFPulse.kr(2).range(0.2, 1.5), \wall) }).play;
+
+w = Wall(Ndef(\mix), \wall);
+w.gui;
+w.input = 6; w.limit = -1;
+w.style = \punchy; w.recovery = 0.04;
+w.preset = 'loud';
+w.delta = true;                      // only what the limiter takes away
+w.delta = false;
+::
+
+Per channel: the input gain; in code::\loud:: a soft clip at the ceiling + 2 dB (Shear's antialiased smooth curve); the detector (the sample peak, or the true peak: BS.1770's four phases and three more points, link::Classes/PeakKit#*truePeak::); the link (no channel is turned down less than its own peak needs); a hold, the largest detected value over the window; the gain that brings it to the ceiling; the release; a box, the mean of that gain over the window; the audio, delayed to meet it; a sample clip at the ceiling for safety. What acts on the delayed sound is delayed with it: that last clip is at the higher of the ceiling now and the ceiling the gains were worked out for, so a code::limit:: step from a pattern never reaches it (after a step down the output may stay at the old ceiling for the latency), and match takes back the input gain the delayed sound was given. Every sample in a box's window comes from a hold window that contains the delayed sample, and every release falls at once, so no sample gets over the ceiling: that is the one thing a limiter has to get right.
+
+table::
+## strong::style:: || strong::release::
+## code::\clean:: || two stages: a fast one on transients, a slow one (attack 60 ms, release 0.6 s) that keeps a bass steady
+## code::\punchy:: || the fast stage alone: snappier, pumps when pushed
+## code::\loud:: || a soft clip first, then the two stages (the slow one twice as fast)
+## code::\pump:: || linear in dB: breathes on purpose; code::recovery:: is the time to come back 6 dB
+::
+
+code::recovery:: is a time constant (63 %) everywhere else.
+
+subsection:: Latency
+Looking ahead puts the sound late by (w - 1) + 6 samples, w the window in samples (link::#*latency::); code::\loud:: adds one for its allpass.
+
+table::
+## strong::ahead:: || strong::44.1 kHz:: || strong::48 kHz:: || strong::96 kHz::
+## none || 6 || 6 || 6
+## 0.5 ms (default) || 27 || 29 || 53
+## 1.5 ms || 71 || 77 || 149
+## 3 ms || 137 || 149 || 293
+## 6 ms || 270 || 293 || 581
+::
+
+SuperDirt has no delay compensation: an orbit with Wall is late against the others (29 samples, measured in a live SuperDirt), the same sound on two orbits combs, and 6 ms on a drum orbit flams. Keep 0.5 ms on an orbit; on a return only when it is wet alone; on the master 3-6 ms only when no orbit is routed code::\direct::. SuperDirt's own orbit limiter (code::limitertype:: 1) is 20 ms late against raw (960 samples, measured). code::none:: is 6 samples late but it is a clipper with a release, not a limiter: a 70 Hz sine 6 dB over comes out with -38 dB of distortion (6 ms: -109 dB). Switching code::ahead:: while sound plays clicks, by up to about 17 % of the amplitude.
+
+The dry (bypass) is the input delayed by the same latency, without the input gain. clean, punchy and pump are a pure delay and null against it; loud adds the antialiasing allpass, a tilt of 0.7-1.4 samples.
+
+Measured offline (48 kHz): an 8 kHz tone at -15 dBFS and a 0 dBFS click into limit -10 came out at -10.0000 dB in every style and ahead, at 48 and 96 kHz; sines from 1 to 19 kHz 6 dB over limit -1 came out at -0.93 dBTP at worst (true peak off: up to +1.6 dBTP at 12 kHz); after ten minutes of drums limited by up to 14 dB the gain was back to 1 within 6e-8.
+
+subsection:: The object and the UGen
+It is an link::Classes/FxParamUnit::, so everything that class documents works here: code::Wall.ar(in, name)::, code::Wall(node, name)::, code::Wall.onBus(bus, numChannels)::, presets, the clipboard, code::gui::. With SuperDirtGUI installed it is an insert, code::~sdg.addInsert(0, \wall)::, listed under dynamics. It links every channel it is given.
+
+It has strong::no mix::, and code::output:: only turns down: a limiter blended with its dry lets the dry's peaks through, and the ceiling has to be the unit's last word. Nothing after the unit (a mixer strip's fader above 0 dB) is held by it.
+
+A stereo Wall is 1002 UGens and loads on a stock server at 1, 2 and 4 channels; in real time it costs about 0.7 times a stereo Imager (measured).
+
+subsection:: The window
+code::w.gui:: opens it, code::w.panel(view):: puts it in a view of yours. The display, link::Classes/WallView::, is the level history (measured) and the static curve (a model). The meter's gain bar is the deepest gain reduction of the last replies; the short-term loudness and the output's true peak are in the display's readout line.
+
+subsection:: Parameters
+Each is a property of the object: read it, set it. The numbers are in the order of the node's control (append only). The label is what the window shows; the parameter is also the Tidal word (code::ceiling:: is a Prelude function, hence code::limit::).
+
+table::
+## strong::parameter:: || strong::label:: || strong::range:: || strong::default:: || strong::what it does::
+## code::input:: || input || -12 .. 24 dB || 0 || how hard the signal is pushed into the ceiling - or drag the history up
+## code::limit:: || ceiling || -12 .. 0 dB || -1 || nothing goes over this: in true peak (dBTP) when true peak is on
+## code::ahead:: || ahead || none, 0.5 ms, 1.5 ms, 3 ms, 6 ms || 0.5 ms || how far ahead it looks: longer is cleaner but puts this track that much late, and combs with the same sound on another orbit. none = a clipper with a release (6 samples late)
+## code::recovery:: || release || 0.005 .. 2 s || 0.1 || how quickly the level comes back after a peak (a time constant; in pump, the time to come back 6 dB)
+## code::style:: || style || clean punchy loud pump || clean || clean: steady on bass; punchy: snappier, pumps when pushed; loud: a clipper first; pump: breathes on purpose
+## code::link:: || link || 0 .. 1 || 1 || 100: every channel turned down together, the image stays; 0: each alone
+## code::truePeak:: || true peak || on off || on || catch the peaks between samples, as a converter or an mp3 makes them
+## code::match:: || match || on off || off || the output turned down by the input gain: hear the limiting, not the loudness
+## code::delta:: || delta || on off || off || hear only what the limiter takes away
+## code::output:: || output || -24 .. 0 dB || 0 || the level after the limiter, only down: the ceiling stays the last word
+::
+
+CLASSMETHODS::
+
+METHOD:: aheads
+The lookahead menu: code::['none', '0.5 ms', '1.5 ms', '3 ms', '6 ms']::.
+
+METHOD:: aheadSeconds
+The same in seconds: code::[0, 0.0005, 0.0015, 0.003, 0.006]::.
+
+METHOD:: styles
+code::[\clean, \punchy, \loud, \pump]::.
+
+METHOD:: windowOf
+The window of a lookahead item in samples: its length rounded, at least 2; 1 for none.
+ARGUMENT:: ahead
+A menu item, e.g. code::'1.5 ms'::.
+ARGUMENT:: sr
+The sample rate.
+RETURNS:: An link::Classes/Integer::.
+
+METHOD:: latency
+How late the unit makes the sound, in samples: (w - 1) + 6, plus 1 in loud.
+code::
+Wall.latency('0.5 ms', \clean, 48000);    // 29
+Wall.latency('6 ms', \loud, 44100);       // 271
+::
+ARGUMENT:: ahead
+ARGUMENT:: style
+ARGUMENT:: sr
+RETURNS:: An link::Classes/Integer::.
+
+METHOD:: curve
+The static curve the display draws: the output level for a steady input level, flat at the ceiling, with loud's soft knee.
+ARGUMENT:: inDb
+The input level in dB, before code::input::.
+ARGUMENT:: input
+ARGUMENT:: limit
+ARGUMENT:: style
+RETURNS:: The output level in dB.
+
+METHOD:: extrasSize
+The length of an object's code::extras:: while its meter is on: 4 - the deepest gain reduction since the last reply (dB, 0 or less), the output's true peak after code::output:: (dBTP), the latency in samples, the short-term loudness (LUFS, 3 s, K-weighted, 0.1 LU under a BS.1770 reference).
+
+METHOD:: styleRelease
+Per style, which release runs: 0 the two stages, 1 the fast one alone, 2 linear in dB.
+
+METHOD:: slowRelTau
+Per style, the slow stage's release time constant in seconds.
+
+METHOD:: slowAttTau
+Per style, the slow stage's attack time constant in seconds.
+
+METHOD:: tau60
+How many time constants a 60 dB time is (6.91): code::Lag:: and code::LagUD:: take 60 dB times.
+
+METHOD:: identityColour
+The dynamics family's orchid (code::FxPalette.identity(\dynamics)::): the gain reduction.
+
+METHOD:: panelExtras
+Called by the device panel while it builds its header: wires the meter's gain bar to the display's code::heroGain::.
+ARGUMENT:: panel
+RETURNS:: An empty Array.
+
+METHOD:: tidalParams
+The words a Tidal pattern may move in SuperDirtGUI: code::input::, code::limit::, code::recovery::, code::link::. Not code::ahead:: (it clicks and changes the latency) or code::style::.
+
+METHOD:: insertCategory
+code::\dynamics::.
+
+METHOD:: eps
+The loud pre-clip's antialiasing threshold (Shear's measured 0.02).
+
+METHOD:: buildExtras
+false builds the same graph without the readouts (checks only).
+
+METHOD:: probe
+An Event that code::*process:: fills with its insides when set (checks only).
+
+INSTANCEMETHODS::
+
+EXAMPLES::
+
+code::
+s.boot;
+Ndef(\drums, { Wall.ar(Splay.ar(Decay2.ar(Impulse.ar([2, 4, 8]), 0.001, [0.4, 0.2, 0.05]) * [SinOsc.ar(55), PinkNoise.ar, WhiteNoise.ar]), \wall) }).play;
+w = Wall(Ndef(\drums), \wall);
+w.gui;
+w.input = 9;
+w.preset = 'what it takes';          // hear what 9 dB of limiting takes away
+w.preset = 'punchy drums';
+::
+
+When you are done:
+
+code::
+w.free; Ndef(\drums).clear;
+::

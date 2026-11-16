@@ -1,0 +1,112 @@
+TITLE:: ShearView
+summary:: Shear's display: the transfer curve with the signal on it, and five seconds of what was cut
+categories:: Libraries>Peaks
+related:: Classes/Shear, Classes/WallView, Classes/FxParamView, Classes/FxDevicePanel
+
+DESCRIPTION::
+What link::Classes/FxDevicePanel:: puts at the top of link::Classes/Shear::'s window, with the in, gain and out meters beside it. Over it, a caption says what the curve is set to (mode, bend, drive, clip, match).
+
+code::
+c = Shear.new;
+c.gui;
+c.mode = \diode; c.skew = 0.4; c.stereo = \ms;    // two curves: the second side's dashed
+::
+
+Left, strong::curve::: the transfer curve of the current mode, bend, bias and skew (link::Classes/Shear#*curve::, the arithmetic the server runs), the input along in units of the clip level, linear from -4 to +4 (negative values are the negative half of the wave), the output up from -1.25 to +1.25. The mode words over it choose the mode. The dashed orchid lines are the clip level, labelled in dBFS; the orchid area between the curve and the diagonal is what gets cut. With skew, the second side's curve is dashed (left and right, or middle and sides in ms). The curve is a strong::model:: of the settings.
+
+What is strong::measured:: (the object's code::extras::, link::Classes/Shear#*extrasSize::): the shaded band, how far the input reaches past the clip level (its level times the drive); the small dots, where the signal sat on the curve, 16 a reply, fading over half a second; the big orchid dot, the loudest point since the last reply.
+
+Right, strong::cut::, measured: five seconds of how far the input went past the clip level (blue, from below, on a dB scale around the clip level) and how loud what was cut was against the input (orchid, hanging from the top, -40 to 0 dB). Under it, the last of both and heat's gain.
+
+table::
+## strong::in the display:: || strong::does::
+## click a mode word || that mode
+## drag the curve up and down || code::drive::
+## drag a dashed clip line || code::clip:: (either line: away from 0 raises it)
+## the wheel on the curve || code::bend::
+## alt + the wheel || code::bias::
+## shift || fine, a tenth as far
+## double click || back to the default of what is under it; on the cut history, clear it
+::
+
+The meter's gain bar (link::#-heroGain::) is how much the curve turned the loudest peak down, read on the model curve; FxMeter labels its number "gain" and hangs it from 0 dB, so the cut, which is louder when more is taken, stays in the history.
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: unit
+The link::Classes/Shear::.
+ARGUMENT:: parent
+
+METHOD:: seconds
+How long the cut history is: 5.
+
+METHOD:: dotLife
+How long a dot stays on the curve, in seconds: 0.5.
+
+METHOD:: minHeight
+The height under which the panel does not shrink the display.
+
+METHOD:: wordGroups
+The mode words in their three groups, as drawn: clean, colour, creative.
+
+METHOD:: dash
+Adds a dashed line to the current Pen path, dash by dash (stroke it afterwards). WallView uses it too.
+ARGUMENT:: p1
+ARGUMENT:: p2
+ARGUMENT:: on
+ARGUMENT:: off
+
+METHOD:: fillSteps
+Fills a stepped history as one shape, so it shows no seams where the columns meet.
+ARGUMENT:: cols
+An Array of code::[x, y]:: pairs, y nil for no column.
+ARGUMENT:: cw
+The column width.
+ARGUMENT:: baseY
+Where the columns stand.
+
+METHOD:: chip
+Draws a label on a dark chip, so it reads over a fill.
+ARGUMENT:: str
+ARGUMENT:: rect
+ARGUMENT:: colour
+ARGUMENT:: align
+
+INSTANCEMETHODS::
+
+METHOD:: levelsArrived
+Called on every meter reply: keeps the history and the dots.
+
+METHOD:: heroGain
+What the meter's gain bar shows, in dB: the reduction of the loudest peak of the last replies; 0 while nothing is measured.
+
+METHOD:: isLive
+Whether the meter is on and the unit is playing.
+
+METHOD:: clear
+Empties the history and the dots.
+
+METHOD:: lastOver
+The last reply's peak over the clip level, in dB (negative: under it).
+
+METHOD:: lastCut
+The last reply's cut, in dB against the input.
+
+METHOD:: lastHeat
+Heat's last gain, as a factor.
+
+METHOD:: dotCount
+How many dots are on screen.
+
+METHOD:: wordRect
+Where a mode word is drawn, in the view's coordinates.
+ARGUMENT:: mode
+
+METHOD:: hint
+What is under the pointer, for the hint bar.
+ARGUMENT:: x
+ARGUMENT:: y
+
+METHOD:: unit
+The link::Classes/Shear:: shown; setting another clears the history.

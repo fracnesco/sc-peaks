@@ -1,0 +1,81 @@
+TITLE:: WallView
+summary:: Wall's display: five seconds of input, output and gain reduction against the ceiling, and the static curve
+categories:: Libraries>Peaks
+related:: Classes/Wall, Classes/ShearView, Classes/FxParamView, Classes/FxDevicePanel
+
+DESCRIPTION::
+What link::Classes/FxDevicePanel:: puts at the top of link::Classes/Wall::'s window, with the in, gain and out meters beside it. Over it, a caption: the ceiling (in dBTP while true peak is on), the lookahead and how many samples late it makes the sound (from the server's reply while it plays, link::Classes/Wall#*latency:: otherwise), the release and the style. With code::ahead:: none it says "a clipper".
+
+code::
+w = Wall.new;
+w.gui;
+w.ahead = '6 ms';      // the caption: 293 samples late at 48 kHz
+::
+
+Left, strong::level::, measured (the object's code::extras::, link::Classes/Wall#*extrasSize::): five seconds scrolling right to left on one dB ruler (-36 to +3 dB): the input peak plus code::input::, what the limiter is asked to hold, faint from below; the output peak, a line; the gain reduction hanging from the top on its own scale (0 to -12 dB), its deepest value written once a second. The dashed orchid line is the ceiling, code::limit + output::.
+
+Right, strong::curve::, a model: the static curve (link::Classes/Wall#*curve::) from -36 to +12 dB in, flat at the ceiling, with loud's soft knee; the input riding it as a dot.
+
+Under them, a readout line: the short-term loudness (LUFS, 3 s), the output's true peak (dBTP) and the gain reduction. The meter's own out number is a sample peak; the readout's is what leaves the unit, measured the way the detector measures.
+
+table::
+## strong::in the display:: || strong::does::
+## drag the dashed ceiling || code::limit:: (the line follows the pointer)
+## drag anywhere else || code::input::
+## the wheel || code::recovery::, 10 % a step
+## shift || fine, a tenth as far
+## double click || back to the default of what is under it; outside both parts, clear the history
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+ARGUMENT:: unit
+The link::Classes/Wall::.
+ARGUMENT:: parent
+
+METHOD:: seconds
+How long the history is: 5.
+
+METHOD:: floorDb
+The ruler's bottom: -36.
+
+METHOD:: topDb
+The ruler's top: +3, room for the input with its gain and for the ceiling's label.
+
+METHOD:: minHeight
+The height under which the panel does not shrink the display.
+
+INSTANCEMETHODS::
+
+METHOD:: levelsArrived
+Called on every meter reply: keeps the history and labels the deepest gain reduction once a second.
+
+METHOD:: heroGain
+What the meter's gain bar shows: the deepest gain reduction of the last few replies, in dB; 0 while nothing is measured.
+
+METHOD:: isLive
+Whether the meter is on and the unit is playing.
+
+METHOD:: clear
+Empties the history.
+
+METHOD:: lastGr
+The last reply's gain reduction, in dB.
+
+METHOD:: grLabels
+The gain reductions written on the history now, in dB.
+
+METHOD:: ceilingDb
+code::limit + output::, where the dashed line is drawn.
+
+METHOD:: sampleRate
+The unit's server's sample rate (48000 if it has none): what the caption's latency is worked out at.
+
+METHOD:: hint
+What is under the pointer, for the hint bar.
+ARGUMENT:: x
+ARGUMENT:: y
+
+METHOD:: unit
+The link::Classes/Wall:: shown; setting another clears the history.

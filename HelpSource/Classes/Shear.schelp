@@ -1,0 +1,194 @@
+TITLE:: Shear
+summary:: a clipper with ten curves, antialiased and gain matched, at a level in dB - as a UGen and as an object, with a window
+categories:: Libraries>Peaks
+related:: Classes/Wall, Classes/PeakKit, Classes/ShearView, Classes/FxParamUnit, Classes/FxDevicePanel
+
+DESCRIPTION::
+A clipper flattens whatever goes past a level. Shear says where that level is (code::clip::, in dB), how hard the signal is pushed into it (code::drive::), and how the corner is shaped (code::mode::, and code::bend:: for each mode's own character).
+
+code::
+Ndef(\bass, { Shear.ar(Saw.ar([55, 55.3]) * 0.5, \shear) }).play;
+
+c = Shear(Ndef(\bass), \shear);
+c.gui;
+c.drive = 18; c.mode = \tube;
+c.mode = \fold; c.bend = 0.45; c.tone = 4500;
+c.preset = 'germanium fuzz';
+c.delta = true;                      // only what the clipper takes away
+c.delta = false;
+::
+
+With code::match:: on (the default) the output stays at the input's loudness: the drive is taken back at once, and what the curve takes away is given back from a measured table (link::#*matchTable::: by mode, bend, how far over the clip level the sound goes and how peaky it is), so turning the drive up changes the character, not the loudness. It never turns the sound up past the input. With code::safe:: on (the default) the output is clipped at the clip level after everything else: nothing leaves Shear above code::clip::. That is the one thing a clipper has to get right.
+
+table::
+## strong::mode:: || strong::family:: || strong::what it is:: || strong::bend::
+## code::\smooth:: || clean || a line up to a knee, then flat; at bend 0 a hard clip. The mastering clipper || the knee's width
+## code::\crisp:: || clean || a line, then 2:1 in dB, then a wall: a converter's "digital saturation" || where the 2:1 starts, -1 to -12 dB
+## code::\inflate:: || clean || the Oxford Inflator's polynomial: quiet parts louder, few harmonics || its curve
+## code::\tube:: || colour || tanh; with code::bias:: an asymmetric triode || not used
+## code::\sine:: || colour || rounder than tanh (Airwindows' Density), flat from +3.9 dB over || not used
+## code::\diode:: || colour || soft on top, earlier and harder below: fuzz, even harmonics || how much the halves differ
+## code::\fold:: || creative || the Buchla 259 timbre circuit: bright, vocal, moves with the level || the folding depth (about 20 dB of level)
+## code::\wrap:: || creative || past the level the wave jumps to the other rail, or folds back || wrap at 0, fold at 1
+## code::\gap:: || creative || quiet detail drops out, tails sputter, then a clip || the gap's width
+## code::\rectify:: || creative || the lower half turned up: the octave above || half wave at 0.5, full wave at 1
+::
+
+Around the curve: code::bias:: moves the signal along it (asymmetry, even harmonics); code::skew:: gives the two sides opposite offsets (left and right in code::\lr::, middle and sides in code::\ms::); code::heat:: makes the drive follow the level; code::detail:: gives back the highs of what was cut; code::slew:: dulls the loudest fast edges; code::thump:: is a low shelf before the curve and its mirror after it; code::tone:: a low pass over the result; code::delta:: plays only what was taken away.
+
+subsection:: Antialiasing and latency
+The curves are antialiased with first-order ADAA in Vicanek's transparent form (link::Classes/PeakKit::): a one-pole before the curve, the divided difference of the curve's antiderivative, a one-pole after. Where the curve is a line, the three are a first-order allpass, so below the clip level the signal passes untouched but for that allpass: about one sample late (0.71 samples at low frequencies, 1.41 at the top). The dry goes through the same allpass (link::Classes/PeakKit#*linearTwin::), so code::mix:: and bypass never comb.
+
+The allpass is -1 at Nyquist: on a return that is a parallel copy of its orbits, summed with the dry orbit, the very top cancels a little. Put Shear on the orbit itself there. On a return that is wet alone, nothing cancels.
+
+Measured offline (NRT, 48 kHz): below the clip level the output is the allpassed input to 5.5e-6; with code::safe:: on, nothing passed the clip level in any mode with every modifier on (worst 9e-8); with it off a driven bass can pass by up to 2.6 dB, 3.7 dB in wrap, for a few hundred ms as it starts. At 2.5 and 5 kHz, smooth is 4.0-5.2 dB cleaner than the same curve without antialiasing. code::match:: keeps the mean of pink noise and a drum loop within 1 dB of the input from drive 0 to 36 in every mode wherever it makes up (0.5 dB in the clean and colour modes), stops at 0 dB where the clip level is under the input's own loudness, and keeps a drive step from a pattern within 1.1 dB (3.1 dB in the creative modes); drive and clip glide over about 80 ms. code::bias:: and code::thump:: are not matched (bias 0.25 about 1-3 dB quieter, 0.5 about 1.5-4 dB). code::heat:: at - drives passages more than 6 dB under the clip level harder: keep code::safe:: on with it.
+
+subsection:: The object and the UGen
+It is an link::Classes/FxParamUnit::, so everything that class documents works here: code::Shear.ar(in, name)::, code::Shear(node, name)::, code::Shear.onBus(bus, numChannels)::, presets, the clipboard, code::gui::. With SuperDirtGUI installed it is an insert, code::~sdg.addInsert(0, \shear)::, listed under dynamics. Channels are clipped in pairs (lr or ms), an odd last one alone.
+
+A stereo Shear is 1575 UGens and loads on a stock server (64 wire buffers) at 1, 2 and 4 channels; in real time it costs about what a stereo Imager does (1.06 times, measured).
+
+subsection:: The window
+code::c.gui:: opens it, code::c.panel(view):: puts it in a view of yours (an link::Classes/FxDevicePanel::). Two pages: strong::clip:: (input, curve, character) and strong::colour:: (lows, tone, stereo), with the output card on both. The display, link::Classes/ShearView::, is the transfer curve, which is a model of the settings, and what was measured on it. The meter's gain bar shows how much the curve turned the loudest peak down. code::bend:: is dimmed for tube and sine, code::thumpFreq:: while code::thump:: is 0.
+
+subsection:: Parameters
+Each is a property of the object: read it, set it. The numbers are in the order of the node's control, which is what saved node maps carry (append only). The label is what the window shows; the parameter is also the Tidal word.
+
+table::
+## strong::parameter:: || strong::label:: || strong::range:: || strong::default:: || strong::what it does::
+## code::drive:: || drive || 0 .. 36 dB || 6 || how far past the clip level the signal is pushed - or drag the curve
+## code::clip:: || clip at || -36 .. 0 dB || -6 || the level the curve flattens at: nothing passes it (with safe on)
+## code::mode:: || mode || smooth crisp inflate tube sine diode fold wrap gap rectify || smooth || the curve: clean (smooth crisp inflate), colour (tube sine diode), creative (fold wrap gap rectify)
+## code::bend:: || bend || 0 .. 1 || 0.3 || the curve's own character: smooth knee, crisp's start, inflate's curve, diode's lean, fold's depth, wrap to fold, gap's width, half to full rectify
+## code::bias:: || bias || -1 .. 1 || 0 || shifts the signal along the curve: asymmetry, even harmonics
+## code::heat:: || heat || -1 .. 1 || 0 || +: loud passages are driven harder and their clipped peaks squashed; -: passages well under the clip level are driven harder and loud steady ones clip less (needs safe to keep the ceiling)
+## code::slew:: || slew || 0 .. 1 || 0 || dulls the loudest fast edges, as a tired op-amp would
+## code::detail:: || detail || 0 .. 1 || 0 || gives back the highs of what was cut: the lows stay clipped
+## code::tone:: || tone || 1000 .. 20000 Hz || 20000 || a low pass over the clipped sound - 20 kHz is off
+## code::thump:: || thump || -12 .. 12 dB || 0 || +: the lows hit the curve harder and come out thinner; -: they are spared the colour, and safe clips them if they pass the clip level
+## code::thumpFreq:: || low freq || 40 .. 800 Hz || 120 || where thump's shelf turns
+## code::stereo:: || stereo || lr ms || lr || lr: each channel clipped alone; ms: the middle and the sides
+## code::skew:: || skew || 0 .. 1 || 0 || a different bias on each side (or on middle and sides): width from distortion
+## code::match:: || match || on off || on || the output kept at the input's loudness: the drive taken back and what the curve takes away given back, never louder than what comes in
+## code::safe:: || safe || on off || on || a wall at the clip level after everything, so nothing passes it
+## code::delta:: || delta || on off || off || hear only what the clipper takes away (at mix 100)
+## code::mix:: || mix || 0 .. 1 || 1 || how much of the effect goes out, against the dry signal
+## code::output:: || output || -36 .. 24 dB || 0 || the level of the whole thing, in dB
+::
+
+CLASSMETHODS::
+
+METHOD:: modes
+The ten curves, in menu order (link::Classes/PeakKit#*curveNames::).
+RETURNS:: An link::Classes/Array:: of Symbols.
+
+METHOD:: curve
+The transfer curve as the settings make it, on Numbers: what the display draws, from the same arithmetic the server runs (before the antialiasing filters, which change nothing on a line).
+ARGUMENT:: u
+The input, in units of the clip level (1 is the clip level, already times the drive).
+ARGUMENT:: mode
+A curve's name.
+ARGUMENT:: bend
+0 to 1.
+ARGUMENT:: bias
+-1 to 1.
+ARGUMENT:: skew
+0 to 1.
+ARGUMENT:: side
++1 or -1 for the two sides skew pulls apart, 0 for neither.
+RETURNS:: The output, in units of the clip level: never past 1.
+
+METHOD:: matchTable
+What code::match:: gives back: the curve's loss in dB (input level minus output level), per mode (rows in menu order), per bend (0, 0.25, 0.5, 0.75, 1), per crest (link::#*matchCrests::) and per level (link::#*matchLevels::), read between the points. Measured with match off, drive 0, clip 0, on a sine, pink noise and a drum loop at each level; each row was then made never to lose more at a lower level than at a higher one. Remeasure after any change to a curve or to the chain's gain.
+
+METHOD:: matchOverride
+Replaces link::#*matchTable:: while measuring it; nil otherwise.
+
+METHOD:: matchTime
+The time constant, in seconds, of the two followers match reads (the input's power and its peak): 0.3. A change in the input's own level or crest is followed this slowly; a change of drive or clip is matched at once.
+
+METHOD:: matchLevels
+The table's level axis in dB: the input's RMS plus the drive minus the clip, from -24 to +60 in steps of 6. Past +60 the last slope goes on.
+
+METHOD:: matchCrests
+The table's crest axis in dB, as the followers read them: a sine (3.0), pink noise (9.96), the drum loop (13.37). Clipped to that range.
+
+METHOD:: crestIndex
+ARGUMENT:: c
+A crest in dB.
+RETURNS:: Its place in link::#*matchCrests::, 0 to 2.
+
+METHOD:: matchLoss
+The model of the table, read as the server reads it.
+ARGUMENT:: mode
+ARGUMENT:: bend
+ARGUMENT:: levelDb
+How far over the clip level the sound goes, RMS, in dB.
+ARGUMENT:: crest
+In dB.
+RETURNS:: The loss in dB.
+
+METHOD:: matchGain
+What match applies, in dB, for a steady input.
+ARGUMENT:: rmsDb
+The input's RMS in dBFS.
+ARGUMENT:: drive
+ARGUMENT:: clip
+ARGUMENT:: mode
+ARGUMENT:: bend
+ARGUMENT:: crest
+RETURNS:: The gain in dB, never above 0: minus the drive plus the loss.
+
+METHOD:: eps
+How close two points of the divided difference may come, in clip units, before the antialiasing takes the curve at their midpoint instead: 0.02. Measured as the value that keeps every mode's float32 error under -80 dB.
+
+METHOD:: dotPairs
+How many points of the signal on the curve each meter reply carries: 16.
+
+METHOD:: extrasSize
+The length of an object's code::extras:: while its meter is on: the highest |u| since the last reply, the cut in dB (what the curve took away against the input), heat's gain, then link::#*dotPairs:: pairs of (input, output) on the curve, in clip units, of the first channel (or the middle, in ms).
+
+METHOD:: identityColour
+The dynamics family's orchid (code::FxPalette.identity(\dynamics)::): what was taken away.
+
+METHOD:: panelExtras
+Called by the device panel while it builds its header: wires the meter's gain bar to the display's code::heroGain::.
+ARGUMENT:: panel
+The link::Classes/FxDevicePanel::.
+RETURNS:: An empty Array (no extra widgets).
+
+METHOD:: isActive
+Whether a parameter does anything with the others as they are: code::bend:: is inactive for tube and sine, code::thumpFreq:: while code::thump:: is 0. The window dims what is inactive.
+ARGUMENT:: key
+ARGUMENT:: unit
+
+METHOD:: tidalParams
+The words a Tidal pattern may move in SuperDirtGUI: every knob and code::mode::, not code::stereo::, code::match::, code::safe::, code::delta:: or code::output::.
+
+METHOD:: insertCategory
+The symbol code::\dynamics::, where SuperDirtGUI's add menus list it.
+
+METHOD:: buildExtras
+false builds the same graph without the display's extras (checks only).
+
+METHOD:: probe
+An Event that code::*process:: fills with its insides when set (checks only).
+
+INSTANCEMETHODS::
+
+EXAMPLES::
+
+code::
+s.boot;
+Ndef(\loop, { Shear.ar(Splay.ar(Decay2.ar(Impulse.ar([2, 3, 4.5]), 0.001, 0.3) * SinOsc.ar([60, 180, 900])), \shear) }).play;
+c = Shear(Ndef(\loop), \shear);
+c.gui;
+c.drive = 12;
+Shear.modes.do { |m, i| SystemClock.sched(i * 2, { c.mode = m; m.postln; nil }) };
+::
+
+When the modes have played (20 seconds):
+
+code::
+c.free; Ndef(\loop).clear;
+::
