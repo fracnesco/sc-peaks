@@ -125,6 +125,20 @@ Wall : FxParamUnit {
 		^(this.windowOf(ahead, sr) - 1) + 6 + if (style.asSymbol == \loud) { 1 } { 0 }
 	}
 
+	// FxUnit's latency, in seconds: the same count for this unit as it is set
+	// now, at its server's rate - and a change of what decides it says
+	// changed(\latency)
+	latency {
+		var srv = server ? Server.default;
+		var sr = srv.sampleRate ? srv.options.sampleRate ? 48000;
+		^Wall.latency(this.get(\ahead), this.get(\style), sr) / sr
+	}
+
+	prChanged { |what|
+		super.prChanged(what);
+		if (#[\ahead, \style, \settings].includes(what)) { this.changed(\latency) };
+	}
+
 	// the static curve the display draws: output level (dB) for a steady input
 	// level (dB, before `input`), at the ceiling `limit`. loud's soft clip
 	// bends from 4 dB under the ceiling + 2
