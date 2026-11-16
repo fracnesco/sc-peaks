@@ -45,6 +45,13 @@ Shear : FxParamUnit {
 	*guiClass { ^FxDeviceGUI }
 	*panelClass { ^FxDevicePanel }
 	*windowSize { ^Point(960, 580) }
+
+	// FxUnit's latency: the antialiasing is about one sample late (PeakKit's
+	// allpass, which the dry goes through too)
+	latency {
+		var srv = server ? Server.default;
+		^1 / (srv.sampleRate ? srv.options.sampleRate ? 48000)
+	}
 	*insertCategory { ^\dynamics }
 	*hasTail { ^false }
 	*usesTidalClock { ^false }
