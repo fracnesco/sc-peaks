@@ -30,7 +30,7 @@ Each effect of this family runs in the same three places. You can write `Shear.a
 
 Shear takes its modes from the clippers people already use: StandardCLIP and KClip for the clean ones, the Oxford Inflator, Airwindows' Density, a germanium fuzz, the Buchla 259 wavefolder, and a broken converter. Wall works like FabFilter Pro-L and Ableton's Limiter: a hold and a box that look ahead, a release in two stages, and BS.1770's true-peak detector. The DSP and the windows are this family's own.
 
-Both are built on [FxKit](../sc%20fx%20kit), which is built on [ParaEQ](../sc%20EQ). The class library will not compile without them. The installer links both when the folders sit side by side. Peaks uses SuperCollider's own UGens, not sc3-plugins.
+Both are built on [FxKit](https://github.com/fracnesco/sc-fx-kit), and the class library will not compile without it; the installer links it when the folders sit side by side. Peaks uses SuperCollider's own UGens, not sc3-plugins.
 
 Written for SuperCollider 3.13 on macOS. Nothing in it is platform specific apart from the symlink in `install.scd`, which works on Linux but not on Windows.
 
@@ -43,11 +43,11 @@ Quarks.install("https://github.com/fracnesco/sc-peaks.git");
 thisProcess.recompile;
 ```
 
-The manifest names `sc-fx-kit` as a dependency, and `sc-fx-kit` names `sc-eq`, so `Quarks` fetches those first. The quark goes by the name of the repository, `sc-peaks`. The classes inside it are `Shear`, `Wall` and `PeakKit`.
+The manifest names `sc-fx-kit` as a dependency, so `Quarks` fetches that first. The quark goes by the name of the repository, `sc-peaks`. The classes inside it are `Shear`, `Wall` and `PeakKit`.
 
 ### From a clone
 
-Clone `sc-eq` into a folder called `sc EQ`, `sc-fx-kit` into `sc fx kit` and this repository into `sc peaks`, side by side. Open `install.scd`, evaluate its first block, then recompile the class library. It links whatever is missing and tells you what it did.
+Clone `sc-fx-kit` into a folder called `sc fx kit` and this repository into `sc peaks`, side by side. Open `install.scd`, evaluate its first block, then recompile the class library. It links whatever is missing and tells you what it did.
 
 On Windows there is no `ln -s`. Use the quark there, or copy the three folders into the extensions folder by hand: `Platform.userExtensionDir.openOS` opens it.
 
